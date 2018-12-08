@@ -8,6 +8,7 @@ from pyhocon import ConfigFactory
 
 CONF = ConfigFactory.parse_file('data.conf')
 FILENAME = CONF.get('dataset.filename')
+MODEL_DIR = CONF.get('model.dir')
 
 TRAIN_PERCENTAGE = 0.9
 
@@ -114,7 +115,7 @@ def main(argv):
 
     tf.logging.set_verbosity(tf.logging.INFO)
 
-    classifier = tf.estimator.Estimator(model_fn=cnn_model_fn, model_dir="/tmp/cancer_convnet_model")
+    classifier = tf.estimator.Estimator(model_fn=cnn_model_fn, model_dir=MODEL_DIR)
 
     print classifier.config.cluster_spec
     time.sleep(2)
@@ -129,11 +130,13 @@ def main(argv):
         num_epochs=None,
         shuffle=False
     )
-    classifier.train(
-        input_fn=train_input_fn,
-        steps=20000,
-        hooks=[logging_hook]
-    )
+
+    if argv[1] != 'test':
+        classifier.train(
+            input_fn=train_input_fn,
+            steps=20000,
+            hooks=[logging_hook]
+        )
 
     eval_input_fn = tf.estimator.inputs.numpy_input_fn(
         x={"x": Xf_test},
