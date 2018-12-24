@@ -4,6 +4,9 @@ import pandas as pd
 import sys
 import time
 
+from optparse import OptionParser
+# import mltest
+
 from pyhocon import ConfigFactory
 
 CONF = ConfigFactory.parse_file('data.conf')
@@ -12,89 +15,123 @@ MODEL_DIR = CONF.get('model.dir')
 
 TRAIN_PERCENTAGE = 0.9
 
+#def setup():
+#    mltest.setup()
 
 def cnn_model_fn(features, labels, mode):
-    input_layer = tf.convert_to_tensor(features["x"])
+    with tf.device('/gpu:0'):
+        input_layer = tf.convert_to_tensor(features["x"])
 
-    conv1 = tf.layers.conv2d(
-        input_layer, # input
-        filters=32, # of filters
-        kernel_size=[3,3], # dimension of filter
-        padding='same',
-        activation=tf.nn.relu
-    )
-    conv2 = tf.layers.conv2d(
-        conv1, # input
-        filters=32, # of filters
-        kernel_size=[3,3], # dimension of filter
-        padding='same',
-        activation=tf.nn.relu
-    )
+        conv1 = tf.layers.conv2d(
+            input_layer, # input
+            filters=32, # of filters
+            kernel_size=[3,3], # dimension of filter
+            padding='same',
+            activation=tf.nn.relu
+        )
+        conv2 = tf.layers.conv2d(
+            conv1, # input
+            filters=32, # of filters
+            kernel_size=[3,3], # dimension of filter
+            padding='same',
+            activation=tf.nn.relu
+        )
 
-    pool1 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[2, 2], strides=2)
-    drop1 = tf.layers.dropout(inputs=pool1, rate=0.25, training=True)
+        pool1 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[2, 2], strides=2)
+        drop1 = tf.layers.dropout(inputs=pool1, rate=0.25, training=True)
 
-    conv3 = tf.layers.conv2d(
-        drop1,
-        filters=64,
-        kernel_size=[3,3],
-        padding="same",
-        activation=tf.nn.relu
-    )
-    conv4 = tf.layers.conv2d(
-        conv3,
-        filters=64,
-        kernel_size=[3,3],
-        padding="same",
-        activation=tf.nn.relu
-    )
+        conv3 = tf.layers.conv2d(
+            drop1,
+            filters=64,
+            kernel_size=[3,3],
+            padding="same",
+            activation=tf.nn.relu
+        )
+        conv4 = tf.layers.conv2d(
+            conv3,
+            filters=64,
+            kernel_size=[3,3],
+            padding="same",
+            activation=tf.nn.relu
+        )
 
-    pool2 = tf.layers.max_pooling2d(inputs=conv4, pool_size=[2,2], strides=2)
+        pool2 = tf.layers.max_pooling2d(inputs=conv4, pool_size=[2,2], strides=2)
 
-    pool2_flat = tf.layers.Flatten()(pool2)
+        pool2_flat = tf.layers.Flatten()(pool2)
 
-    dense = tf.layers.dense(inputs=pool2_flat, units=128, activation=tf.nn.relu)
-    dropout = tf.layers.dropout(inputs=dense, rate=0.5, training=True)
+        dense = tf.layers.dense(inputs=pool2_flat, units=128, activation=tf.nn.relu)
+        dropout = tf.layers.dropout(inputs=dense, rate=0.5, training=True)
 
-    logits = tf.layers.dense(inputs=dropout, units=7)
+        logits = tf.layers.dense(inputs=dropout, units=7)
 
-    predictions = {
-        "classes": tf.argmax(input=logits, axis=1),
-        "probabilities": tf.nn.softmax(logits, name="softmax_tensor")
-    }
+        predictions = {
+            "classes": tf.argmax(input=logits, axis=1),
+            "probabilities": tf.nn.softmax(logits, name="softmax_tensor")
+        }
 
-    if mode == tf.estimator.ModeKeys.PREDICT:
-        return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
-    loss = tf.losses.sparse_softmax_cross_entropy(labels=labels,logits=logits)
+        if mode == tf.estimator.ModeKeys.PREDICT:
+            return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
+        loss = tf.losses.sparse_softmax_cross_entropy(labels=labels,logits=logits)
 
-    if mode == tf.estimator.ModeKeys.TRAIN:
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
-        train_op = optimizer.minimize(
-            loss = loss,
-            global_step = tf.train.get_global_step())
-        return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op = train_op)
+        if mode == tf.estimator.ModeKeys.TRAIN:
+            optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
+            train_op = optimizer.minimize(
+                loss = loss,
+                global_step = tf.train.get_global_step())
+            return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op = train_op)
 
-    eval_metric_ops = {
-        "accuracy": tf.metrics.accuracy(labels=labels, predictions=predictions["classes"])
-    }
+        eval_metric_ops = {
+            "accuracy": tf.metrics.accuracy(labels=labels, predictions=predictions["classes"])
+        }
 
-    return tf.estimator.EstimatorSpec(mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
+        return tf.estimator.EstimatorSpec(mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
+
+#def test_mltest_suite():
+#    input_tensor = tf.placeholder(tf.float32, (None,28,28,3))
+#    label_tensor = tf.placeholder(tf.int32, (None,))
+#
+#    model = cnn_model_fn(input_tensor, label_tensor, tf.estimator.ModeKeys.EVAL)
+#
+#    feed_dict = {
+#        input_tensor: np.random.normal(size=(10,28,28,3)),
+#        label_tensor: np.random.randint((10))
+#    }
+#
+#    # TODO - figure out how to actually make this work with tf.Estimators
+#    mltest.test_suite(
+#        model.predictions,
+#        model.train_op
+#    )
 
 def main(argv):
+
+    parser = OptionParser()
+    parser.add_option('--train', action="store_true", dest="train", default=False)
+    parser.add_option('--eval', action="store_true", dest="eval", default=False)
+    #parser.add_option('--mltest', action="store_true", dest="mltest", default=False)
+
+    (options, args) = parser.parse_args()
+
+    """
+    if all([not i for i in [options.train, options.eval, options.mltest]]):
+        print "Need to set an option (--train, --eval, --mltest)"
+        return
+    """
+
     dat = pd.read_csv(FILENAME)
     train_labels = np.asarray(dat['label'], dtype=np.int32)
-    print 'train_labels: ', train_labels
-    print 'labels: ', dat['label'].unique(), '(type %s)' % type(dat['label'].unique())
+    print('train_labels: ', train_labels)
+    print('labels: ', dat['label'].unique(), '(type %s)' % type(dat['label'].unique()))
     num_labels = len(dat['label'].unique())
 
     X = dat.drop(['label'], axis=1).values
-    print X.shape
+    print(X.shape)
 
-    print X[0,:]
+    print(X[0,:])
 
     Xn = np.reshape(X, (-1, 28, 28 * 3))
-    print 'Xn.shape: ', Xn.shape
-    print Xn[0,:,:], Xn[0,:,:].shape
+    print('Xn.shape: ', Xn.shape)
+    print(Xn[0,:,:], Xn[0,:,:].shape)
 
     Xf = np.zeros((Xn.shape[0],28,28,3))
 
@@ -117,7 +154,7 @@ def main(argv):
 
     classifier = tf.estimator.Estimator(model_fn=cnn_model_fn, model_dir=MODEL_DIR)
 
-    print classifier.config.cluster_spec
+    print(classifier.config.cluster_spec)
     time.sleep(2)
 
     tensors_to_log = {"probabilities": "softmax_tensor"}
@@ -131,7 +168,7 @@ def main(argv):
         shuffle=False
     )
 
-    if argv[1] != 'test':
+    if options.train:
         classifier.train(
             input_fn=train_input_fn,
             steps=20000,
@@ -145,7 +182,10 @@ def main(argv):
         shuffle=False
     )
     eval_results = classifier.evaluate(input_fn=eval_input_fn)
-    print eval_results
+    print(eval_results)
+    #elif options.mltest:
+    #    test_mltest_suite()
+
 
 if __name__ == '__main__':
     main(sys.argv)
